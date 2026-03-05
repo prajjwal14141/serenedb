@@ -18,22 +18,37 @@
 /// Copyright holder is SereneDB GmbH, Berlin, Germany
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "basics/debugging.h"
-#include "basics/system-compiler.h"
-#include "catalog/database.h"
-#include "catalog/databases.h"
-#include "pg/commands.h"
-#include "yaclib/async/make.hpp"
+#pragma once
 
-namespace sdb::pg {
+#include "basics/containers/flat_hash_set.h"
+#include "catalog/identifiers/object_id.h"
 
-yaclib::Future<Result> DropDatabase(ExecContext& ctx, const DropdbStmt& stmt) {
-  auto r = catalog::DropDatabase(ctx, stmt.dbname);
-  if (stmt.missing_ok && r.is(ERROR_SERVER_DATABASE_NOT_FOUND)) {
-    r = {};
+namespace sdb::catalog {
+
+struct ObjectDependencyBase {
+  virtual ~ObjectDependencyBase() = default;
+};
+
+struct TableDependency : public ObjectDependencyBase {
+  ObjectId shard_id;
+  containers::FlatHashSet<ObjectId> indexes;
+};
+
+struct IndexDependency : public ObjectDependencyBase {
+  ObjectId shard_id;
+};
+
+struct SchemaDependency : public ObjectDependencyBase {
+  containers::FlatHashSet<ObjectId> tables;
+  containers::FlatHashSet<ObjectId> functions;
+  containers::FlatHashSet<ObjectId> views;
+  bool Empty() const {
+    return tables.empty() && functions.empty() && views.empty();
   }
-  SDB_IF_FAILURE("crash_on_drop") { SDB_IMMEDIATE_ABORT(); }
-  return yaclib::MakeFuture(std::move(r));
-}
+};
 
-}  // namespace sdb::pg
+struct DatabaseDependency : public ObjectDependencyBase {
+  containers::FlatHashSet<ObjectId> schemas;
+};
+
+}  // namespace sdb::catalog
